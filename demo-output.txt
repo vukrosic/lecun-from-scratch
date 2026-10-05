@@ -1,0 +1,215 @@
+=== step1_convolution.py
+the picture: a 4, 8 x 8 pixels
+      ..##      
+      ##..      
+    ::**    **  
+    ##    ****  
+  ::##    ##..  
+  ########**    
+  ..**####..    
+      ..##      
+
+the vertical filter laid at row 3, column 0:
+   -1 x 0.00   +0 x 0.19   +1 x 1.00
+   -1 x 0.00   +0 x 0.56   +1 x 0.81
+   -1 x 0.00   +0 x 0.81   +1 x 0.94
+   sum = +2.75
+
+at all 6 x 6 = 36 positions (vertical filter, matches only):
+..**..      
+::::    ::  
+##    ..::  
+##    ::    
+##          
+**::::      
+horizontal filter:
+..::      ..
+::      ::**
+::      ....
+..**####..  
+  ..##::    
+            
+
+digit moved 3 right and 2 down on a 12 x 12 page:
+   strongest match was at (4, 1), is now at (6, 4)
+   the whole feature map moved by the same 3 and 2: True
+
+one filter: 9 weights, used at 36 positions
+
+=== step2_shared_weights.py
+the filter starts as 9 random numbers:
+   +0.34  +0.26  -0.08
+   -0.24  +0.01  -0.10
+   +0.28  -0.20  -0.02
+
+blame for the top-right weight, by the formula: -1155.282
+blame for the top-right weight, by nudging it : -1155.282
+step   1: error  1780.7769
+step   2: error   750.0134
+step   5: error    69.6479
+step  10: error    11.6031
+step  20: error     5.0570
+step  50: error     0.8156
+step 100: error     0.0732
+step 200: error     0.0019
+
+the filter it found:
+   -1.00  -0.00  +1.00
+   -1.00  +0.00  +1.00
+   -1.00  -0.00  +1.00
+the secret filter:
+   -1.00  +0.00  +1.00
+   -1.00  +0.00  +1.00
+   -1.00  +0.00  +1.00
+
+weights needed to turn 64 pixels into a 36-number feature map:
+   every pixel wired to every output: 64 x 36 = 2,304
+   one shared filter               : 9
+
+=== step3_lenet.py
+1297 training pages, 500 test pages, each 12 x 12, the digit at a random place
+blame for one filter weight: backward() says 0.028837, nudging says 0.028837
+one page going through the network:
+   Conv   -> 6 x 10 x 10
+   Relu   -> 6 x 10 x 10
+   Pool   -> 6 x 5 x 5
+   Conv   -> 16 x 3 x 3
+   Relu   -> 16 x 3 x 3
+   Flat   -> 144
+   Dense  -> 10
+
+network                             weights   train    test
+filters (LeNet layout)                2,390   93.7%   84.4%
+every pixel wired, same size          2,335   57.9%   46.0%
+every pixel wired, 8 times bigger    19,850   79.7%   60.6%
+
+the 6 filters it learned in the first layer (+ pulls up, - pulls down):
+   . - -    - + .    + - -    + - -    - - -    + + .
+   + + -    + + +    . - -    + - -    - + +    + + +
+   - + +    - . +    + + .    + - -    - + +    + + .
+
+=== step4_efficient_backprop.py
+a raw picture: average pixel 4.88, largest 16
+the same picture centred: average -0.00, spread 0.97
+
+inputs     starting weights   flat at start  after 1 epoch  after 20
+raw 0..16  size 1                     96.2%          31.2%     85.6%
+raw 0..16  1 / sqrt(inputs)           70.2%          53.2%     89.0%
+centred    size 1                     69.9%          60.0%     89.0%
+centred    1 / sqrt(inputs)            1.4%          89.6%     96.4%
+
+64 inputs of spread 1, weights of size 1          : the sum has spread 8.4
+64 inputs of spread 1, weights of size 1/sqrt(64): the sum has spread 0.9
+
+1024 inputs of spread 1, weights of size 1          : the sum has spread 31.4
+1024 inputs of spread 1, weights of size 1/sqrt(1024): the sum has spread 1.0
+
+=== step5_brain_damage.py
+trained network: 4,928 connections, 96.4% on test digits
+300 weights: curvature by shortcut vs by nudging, correlation 0.96
+300 weights: predicted cost vs real cost of deleting, correlation 0.85
+300 weights: size of weight vs real cost of deleting, correlation 0.79
+
+delete in one cut, no retraining    brain damage  smallest first  at random
+    50% of connections deleted           96.4%           96.6%      55.0%
+    70% of connections deleted           96.4%           96.6%      23.2%
+    80% of connections deleted           95.6%           95.8%      35.4%
+    90% of connections deleted           85.8%           90.2%      12.8%
+
+delete, retrain 10 epochs, delete more:
+   brain damage    50% deleted, 2,464 left:  96.4% right after the cut,  97.0% after retraining
+   brain damage    70% deleted, 1,479 left:  96.8% right after the cut,  97.2% after retraining
+   brain damage    80% deleted,   986 left:  96.4% right after the cut,  96.8% after retraining
+   brain damage    90% deleted,   493 left:  86.6% right after the cut,  94.4% after retraining
+   brain damage    95% deleted,   247 left:  66.6% right after the cut,  93.6% after retraining
+   smallest first  50% deleted, 2,464 left:  96.6% right after the cut,  96.8% after retraining
+   smallest first  70% deleted, 1,479 left:  96.8% right after the cut,  97.0% after retraining
+   smallest first  80% deleted,   986 left:  96.0% right after the cut,  97.2% after retraining
+   smallest first  90% deleted,   493 left:  92.6% right after the cut,  95.6% after retraining
+   smallest first  95% deleted,   247 left:  74.0% right after the cut,  94.6% after retraining
+
+connections left from each of the 144 input pixels (of 32) at 90 % deleted:
+    .  .  .  .  .  .  .  .  .  .  .  .
+    .  .  .  .  .  .  .  .  .  .  .  .
+    .  .  .  .  1 10 13 12  .  .  .  .
+    .  .  .  . 15 11  8  6  .  .  .  .
+    .  .  .  . 11 11 17 16  .  .  .  .
+    .  .  .  . 15 15 13 10  1  .  .  .
+    .  .  .  .  8 11 13 10  1  .  .  .
+    .  .  .  . 13 17 11 10  3  .  .  .
+    .  .  .  .  2  9 13  8  1  .  .  .
+    .  .  .  .  4  8  6  6  .  .  .  .
+    .  .  .  .  .  .  .  .  .  .  .  .
+    .  .  .  .  .  .  .  .  .  .  .  .
+pixels with no connection left: 108 of 144
+
+=== step6_siamese.py
+step    0: same pairs 0.22 apart, different pairs 0.43 apart
+step  800: same pairs 0.59 apart, different pairs 1.66 apart
+step 1600: same pairs 0.39 apart, different pairs 2.20 apart
+step 2400: same pairs 0.44 apart, different pairs 2.09 apart
+step 3200: same pairs 0.35 apart, different pairs 2.62 apart
+step 3999: same pairs 0.51 apart, different pairs 2.66 apart
+
+"are these two the same digit?" on test pictures it never saw:
+   distance between the raw pictures: 80.1% right
+   distance between the two points  : 94.1% right (same if closer than 0.99)
+one named example per digit, every other test picture takes the nearest name:
+   nearest raw picture: 64.9% right
+   nearest point      : 86.7% right
+
+where each digit ended up (average point of its test pictures):
+   0: (+0.20, +2.40)
+   1: (+0.85, -1.19)
+   2: (+2.49, -1.51)
+   3: (+2.48, +0.09)
+   4: (-1.01, -0.24)
+   5: (+0.37, +0.63)
+   6: (-1.03, +1.18)
+   7: (-0.33, -1.32)
+   8: (+1.31, -0.52)
+   9: (+1.26, +0.65)
+
+=== step7_energy.py
+    x    right answers  ordinary network   energy network: valleys at
+  0.1           +-0.32             +0.05   -0.33  +0.34
+  0.2           +-0.45             +0.05   -0.43  +0.43
+  0.3           +-0.55             +0.06   -0.52  +0.52
+  0.4           +-0.63             +0.06   -0.60  +0.60
+  0.5           +-0.71             +0.06   -0.68  +0.68
+  0.6           +-0.77             +0.05   -0.75  +0.76
+  0.7           +-0.84             +0.04   -0.82  +0.83
+  0.8           +-0.89             +0.03   -0.89  +0.90
+  0.9           +-0.95             +0.02   -0.96  +0.97
+  1.0           +-1.00             +0.02   -1.03  +1.03
+
+average distance from a right answer: ordinary 0.67, energy 0.02
+questions with exactly two valleys: 10 of 10
+
+=== step8_joint_embedding.py
+blame for one number: formula 0.21201, nudging 0.21201
+
+rule 1 only (two views must agree):
+   step    0: spread of the 16 numbers across pictures 0.1308
+   step  500: spread of the 16 numbers across pictures 0.0027
+   step 1000: spread of the 16 numbers across pictures 0.0017
+   step 1500: spread of the 16 numbers across pictures 0.0006
+   step 1999: spread of the 16 numbers across pictures 0.0009
+all three rules:
+   step    0: spread of the 16 numbers across pictures 0.1308
+   step 1000: spread of the 16 numbers across pictures 0.9701
+   step 2000: spread of the 16 numbers across pictures 1.0312
+   step 3000: spread of the 16 numbers across pictures 0.9946
+   step 4000: spread of the 16 numbers across pictures 1.0063
+   step 5000: spread of the 16 numbers across pictures 0.9792
+   step 5999: spread of the 16 numbers across pictures 0.9757
+
+read the digit from the features, test pictures, average of 5 draws of the labelled pictures
+features                      10 labels (1 per digit)  100 labels (10 per digit)
+raw pixels                                      13.3%                      24.7%
+rule 1 only (collapsed)                         10.0%                      10.2%
+all three rules                                 64.0%                      82.3%
+step 3 network, labels only                     15.1%                      35.8%
+
+the filter network saw 1,297 pictures with no label before the labels arrived
+
